@@ -14,12 +14,16 @@ program
     .parse(process.argv);
 const options = program.opts();
 const EMAIL_COLUMN = 1;
-const NAME_COLUMN = 2;
+const CANCEL_STRING = 'これをチェック状態にすると、入場登録をキャンセルしたとみなされます';
+const IGNORE_STRINGS = [
+    CANCEL_STRING,
+    '該当なし',
+];
 // Setオブジェクトに優先度データを追加(Setオブジェクトを使うことで重複削除)
 const addPrioritiesToSet = (set, row) => {
-    const priorities = row.slice(3 + parseInt(options.add));
-    // 空白データを除去して追加
-    priorities.map((date) => date ? set.add(date) : null);
+    const priorities = row.slice(2 + parseInt(options.add));
+    // 不要なデータを除去して追加
+    priorities.map((date) => !date || IGNORE_STRINGS.some(str => date.includes(str)) ? null : set.add(date));
 };
 // CSVを読み込む
 const readCSV = async (fileName, startLine) => {
@@ -28,6 +32,9 @@ const readCSV = async (fileName, startLine) => {
     const parser = (0, fs_1.createReadStream)(`./${fileName}`)
         .pipe((0, csv_parse_1.parse)({ from: startLine }));
     parser.on('data', (row) => {
+        if (row.some((data) => data.includes(CANCEL_STRING))) {
+            return;
+        }
         // indexをメールアドレスにすることで重複削除(後ろ優先)
         csvData[row[EMAIL_COLUMN]] = row;
         // 優先度データからイベント開催日時を追加
@@ -68,8 +75,8 @@ const shuffleArray = (array) => {
             for (const priority of priorities) {
                 result.find((r) => r.date === priority)
                     ?.data.find((d) => d.priority === i)?.users.push({
-                    name: row[NAME_COLUMN],
                     email: row[EMAIL_COLUMN],
+                    addData: row[1 + parseInt(options.add)],
                 });
                 i++;
             }
@@ -82,7 +89,9 @@ const shuffleArray = (array) => {
         });
         // CSVを出力
         result.forEach((r) => {
-            const [month, day] = r.date.split('/');
+            const date = r.date.match(/(\d+)\/(\d+)/);
+            const month = date ? date[1] : '';
+            const day = date ? date[2] : '';
             let users = [];
             r.data.forEach((d) => {
                 users = users.concat(d.users);

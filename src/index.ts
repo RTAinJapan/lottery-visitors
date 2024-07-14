@@ -15,27 +15,31 @@ program
 const options = program.opts();
 
 type User = {
-    name: string,
     email: string,
+    addData: string,
 };
 
 type Result = {
     date: string,
     data: {
         priority: number,
-        users: User[]
+        users: User[],
     }[]
 };
 
 const EMAIL_COLUMN = 1;
-const NAME_COLUMN = 2;
+const CANCEL_STRING = 'これをチェック状態にすると、入場登録をキャンセルしたとみなされます';
+const IGNORE_STRINGS = [
+    CANCEL_STRING,
+    '該当なし',
+];
 
 // Setオブジェクトに優先度データを追加(Setオブジェクトを使うことで重複削除)
 const addPrioritiesToSet = (set: Set<string>, row: string[]) => {
-    const priorities = row.slice(3 + parseInt(options.add));
+    const priorities = row.slice(2 + parseInt(options.add));
 
-    // 空白データを除去して追加
-    priorities.map((date) => date ? set.add(date) : null);
+    // 不要なデータを除去して追加
+    priorities.map((date) => !date || IGNORE_STRINGS.some(str => date.includes(str)) ? null : set.add(date));
 }
 
 // CSVを読み込む
@@ -47,6 +51,9 @@ const readCSV = async (fileName: string, startLine: number) => {
         .pipe(parse({ from: startLine }));
     
     parser.on('data', (row: string[]) => {
+        if (row.some((data) => data.includes(CANCEL_STRING))) {
+            return;
+        }
         // indexをメールアドレスにすることで重複削除(後ろ優先)
         csvData[row[EMAIL_COLUMN]] = row;
         // 優先度データからイベント開催日時を追加
@@ -92,8 +99,8 @@ const shuffleArray = (array: any[]) => {
             for (const priority of priorities) {
                 result.find((r) => r.date === priority)
                     ?.data.find((d) => d.priority === i)?.users.push({
-                        name: row[NAME_COLUMN],
                         email: row[EMAIL_COLUMN],
+                        addData: row[1 + parseInt(options.add)],
                     });
                 i++;
             }
@@ -109,7 +116,9 @@ const shuffleArray = (array: any[]) => {
 
         // CSVを出力
         result.forEach((r) => {
-            const [month, day] = r.date.split('/');
+            const date = r.date.match(/(\d+)\/(\d+)/);
+            const month = date ? date[1] : '';
+            const day = date ? date[2] : '';
             let users: User[] = [];
             r.data.forEach((d) => {
                 users = users.concat(d.users);
